@@ -40,10 +40,8 @@ def send_level_initialize_packet(client_socket):
 def send_level_data_chunk(client_socket, chunk_data, percent_complete):
     # Pad the chunk with zeros to make it 1024 bytes long
     padded_chunk_data = chunk_data.ljust(1024, b'\x00')
-    # Compress the padded chunk data
-    compressed_chunk_data = gzip.compress(padded_chunk_data)
     # Send the packet
-    packet = struct.pack('>Bh1024sB', PACKET_ID_LEVEL_DATA_CHUNK, len(compressed_chunk_data), compressed_chunk_data, percent_complete)
+    packet = struct.pack('>Bh1024sB', PACKET_ID_LEVEL_DATA_CHUNK, len(padded_chunk_data), padded_chunk_data, percent_complete)
     client_socket.sendall(packet)
 
 # Function to send level finalize packet
@@ -54,7 +52,6 @@ def send_level_finalize_packet(client_socket):
     packet = struct.pack('Bhhh', PACKET_ID_LEVEL_FINALIZE, x_size, y_size, z_size)
     client_socket.sendall(packet)
 
-# Function to send spawn player packet
 # Function to send spawn player packet
 def send_spawn_player_packet(client_socket, player_id, player_name, x, y, z, yaw, pitch):
     # Pad player name to 64 bytes with spaces
@@ -72,26 +69,15 @@ def send_disconnect_player_packet(client_socket, reason):
     packet = struct.pack('Bs', PACKET_ID_DISCONNECT_PLAYER, reason.encode('ascii'))
     client_socket.sendall(packet)
 
-def generate_sample_level():
-    # Create a sample level of size 256x128x256 in XZY order
-    level = np.zeros((256, 64, 256), dtype=np.uint8)
+def read_level_dat(filename):
+    with open(filename, 'rb') as file:
+        level_data = file.read()
 
-    # Populate the level with some sample block types
-    # For example, set the block type of the first few blocks to 1
-    level[:10, :10, :10] = 1
+    return level_data
 
-    # Convert the level to bytes
-    level_bytes = level.tobytes()
-
-    # Compress the level data using gzip
-    compressed_data = gzip.compress(level_bytes)
-
-    return compressed_data
-
-
-def split_level_data(level_data):
+def prepare_level_chunks(compressed_level_data):
     chunk_size = 1024
-    chunks = [level_data[i:i + chunk_size] for i in range(0, len(level_data), chunk_size)]
+    chunks = [compressed_level_data[i:i + chunk_size] for i in range(0, len(compressed_level_data), chunk_size)]
     # Pad the final chunk with 0x00 bytes if necessary
     if chunks:
         chunks[-1] = chunks[-1].ljust(chunk_size, b'\x00')
@@ -124,11 +110,11 @@ def main():
                         send_server_identification(client_socket)
                         time.sleep(1)
 
-                        # Generate sample level
-                        level_data = generate_sample_level()
+                        # Read level data from file
+                        level_data = read_level_dat("server_level.dat")
 
-                        # Split level data into chunks
-                        chunks = split_level_data(level_data)
+                        # Prepare level data chunks
+                        chunks = prepare_level_chunks(level_data)
 
                         # Send level initialization packet
                         send_level_initialize_packet(client_socket)
